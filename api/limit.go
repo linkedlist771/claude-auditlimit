@@ -28,6 +28,11 @@ func GetVisitor(token string, limit int, per time.Duration) *rate.Limiter {
 	}
 
 	v.lastSeen = time.Now()
+	// 增加 Redis 计数
+	if err := incrementTokenUsage(token); err != nil {
+		// 这里可以选择记录日志，但不影响主流程
+		// log.Printf("Failed to increment token usage: %v", err)
+	}
 	return v.limiter
 }
 
@@ -43,6 +48,9 @@ func CleanupVisitors() {
 }
 
 func init() {
+	 // 初始化 Redis 连接
+	 initRedis()
+    
 	// 每小时清理一次
 	go func() {
 		for {
