@@ -14,7 +14,7 @@ var (
 
 func initRedis() {
     rdb = redis.NewClient(&redis.Options{
-        Addr:     "localhost:6379",
+        Addr:     "localhost:6379", // TODO: 这里在docker1 里面需要把localhost改为redis
         Password: "", 
         DB:       0,  
     })
