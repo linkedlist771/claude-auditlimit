@@ -9,10 +9,10 @@ import (
 )
 
 type TokenStats struct {
-    Token           string `json:"token"`
-    TotalUsage      int64  `json:"total_usage"`
-    CurrentActive   bool   `json:"current_active"`
-    LastSeenSeconds int64  `json:"last_seen_seconds,omitempty"`
+    Token           string         `json:"token"`
+    Usage          *TokenUsageStats `json:"usage"`
+    CurrentActive   bool           `json:"current_active"`
+    LastSeenSeconds int64          `json:"last_seen_seconds,omitempty"`
 }
 
 func GetTokenStats(r *ghttp.Request) {
@@ -34,8 +34,8 @@ func GetTokenStats(r *ghttp.Request) {
 
     for token, usage := range usageStats {
         stat := TokenStats{
-            Token:      token,
-            TotalUsage: usage,
+            Token: token,
+            Usage: usage,
         }
 
         if v, exists := visitors[token]; exists {
@@ -50,7 +50,7 @@ func GetTokenStats(r *ghttp.Request) {
         if _, exists := usageStats[token]; !exists {
             stats = append(stats, TokenStats{
                 Token:           token,
-                TotalUsage:     0,
+                Usage:          &TokenUsageStats{},
                 CurrentActive:   true,
                 LastSeenSeconds: int64(now.Sub(v.lastSeen).Seconds()),
             })
@@ -58,7 +58,7 @@ func GetTokenStats(r *ghttp.Request) {
     }
 
     sort.Slice(stats, func(i, j int) bool {
-        return stats[i].TotalUsage > stats[j].TotalUsage
+        return stats[i].Usage.Total > stats[j].Usage.Total
     })
 
     r.Response.WriteJsonExit(g.Map{
