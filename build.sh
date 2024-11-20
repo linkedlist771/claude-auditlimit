@@ -4,4 +4,4 @@
 go build
 
 # 或者指定输出文件名
-go build -o auditlimit
+go build -o main
