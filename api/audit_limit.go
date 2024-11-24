@@ -5,7 +5,9 @@ package api
 import (
 	"auditlimit/config"
 	"strings"
+	"strconv"
 	"time"
+	"fmt"
 	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -21,8 +23,63 @@ func AuditLimit(r *ghttp.Request) {
 	if token != "" {
 		token = token[7:]
 	}
+	// Add device identifier check
+
+	// host := r.Header.Get("Host")
+	host := r.Host
+
+	userAgent := r.Header.Get("User-Agent")
+	// g.Log().Debug(ctx, "host", host)
+	// g.Log().Debug(ctx, "userAgent", userAgent)
+    
+    if host == "" || userAgent == "" {
+        r.Response.WriteJsonExit(g.Map{
+            "code": 400,
+            "msg":  "Host and User-Agent are required",
+        })
+        return
+    }
+    
+    deviceIdentifier := fmt.Sprintf("%s:%s", userAgent, host)
+
+
+	if deviceIdentifier == "" {
+        r.Response.Status = 400
+        r.Response.WriteJson(g.Map{
+            "error": g.Map{
+                "message": "Device identifier is required" + "\n" + "设备标识符是必需的",
+            },
+        })
+        return
+    }
+
+    // Check device authorization
+    allowed, err := checkAndAddDevice(token, deviceIdentifier, userAgent, host)	
+    if err != nil {
+        g.Log().Error(ctx, "Device check failed", err)
+        r.Response.Status = 500
+        r.Response.WriteJson(g.Map{
+            "error": g.Map{
+                "message": "Failed to verify device" + "\n" + "无法验证设备",
+            },
+        })
+        return
+    }
+
+    if !allowed {
+        r.Response.Status = 403
+        r.Response.WriteJson(g.Map{
+            "error": g.Map{
+                "message": "Maximum number of devices ("+strconv.Itoa(config.MAX_DEVICES) +") reached. Please logout from another device first." + "\n" + "已达到最大设备数 ("+strconv.Itoa(config.MAX_DEVICES) +")。请先从另一台设备注销。",
+            },
+        })
+        return
+    }
+
 	g.Log().Debug(ctx, "token", token)
 	// 获取gfsessionid 可以用来分析用户是否多设备登录
+
+	
 	gfsessionid := r.Cookie.Get("gfsessionid").String()
 	g.Log().Debug(ctx, "gfsessionid", gfsessionid)
 	// 获取referer 可以用来判断用户请求来源

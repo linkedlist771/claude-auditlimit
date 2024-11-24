@@ -17,6 +17,8 @@ var (
 	OAIKEY         = ""            // OAIKEY
 	OAIKEYLOG      = ""            // OAIKEYLOG 隐藏
 	MODERATION     = ""
+	REDIS 		   = ""   		   // Redis
+	MAX_DEVICES    = 3
 )
 
 func init() {
@@ -49,4 +51,13 @@ func init() {
 		MODERATION = moderation
 	}
 	g.Log().Info(ctx, "MODERATION:", MODERATION)
+	 if redis := g.Cfg().MustGetWithEnv(ctx, "REDIS").String(); redis != "" {
+		REDIS = redis
+	 }
+	 g.Log().Info(ctx, "REDIS:", REDIS)
+	 
+	 if maxDevices := g.Cfg().MustGetWithEnv(ctx, "MAX_DEVICES").Int(); maxDevices > 0 {
+		MAX_DEVICES = maxDevices
+	 }
+	 g.Log().Info(ctx, "MAX_DEVICES:", MAX_DEVICES)
 }

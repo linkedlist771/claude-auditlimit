@@ -8,4 +8,6 @@ now=$(date +"%Y%m%d%H%M%S")
 # 以当前时间为版本号
 docker tag epicmo/claude-auditlimit:latest epicmo/claude-auditlimit:$now
 docker push epicmo/claude-auditlimit:$now
-echo "release success" $now
+echo "release success" $nowgo build -o main-mac
+
+

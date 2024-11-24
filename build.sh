@@ -8,3 +8,6 @@ go build -o main
 # 交叉编译到linux
 GOOS=linux GOARCH=amd64 go build -o main
 
+# 编译成mac
+go build -o main-mac
+

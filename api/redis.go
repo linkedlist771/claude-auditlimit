@@ -2,7 +2,9 @@
 package api
 
 import (
-    "context"
+    "auditlimit/config"
+
+    "context"    
     // "fmt"  // Added missing import
     "log"
     "strconv"
@@ -26,7 +28,7 @@ var (
 
 func initRedis() {
     rdb = redis.NewClient(&redis.Options{
-        Addr:     "redis:6379",
+        Addr:     config.REDIS,
         Password: "", 
         DB:       0,  
     })
