@@ -4,9 +4,10 @@ package api
 
 import (
 	"auditlimit/config"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
+
 	// "fmt"
 	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/frame/g"
@@ -28,60 +29,58 @@ func AuditLimit(r *ghttp.Request) {
 	// host := r.Header.Get("Host")
 	host := r.Header.Get("X-Forwarded-Host")
 	if host == "" {
-		host = r.Host  // 如果没有X-Forwarded-Host，则使用直接的Host
+		host = r.Host // 如果没有X-Forwarded-Host，则使用直接的Host
 	}
 	userAgent := r.Header.Get("User-Agent")
 	g.Log().Debug(ctx, "AuditLimit host", host)
 	g.Log().Debug(ctx, "AuditLimit userAgent", userAgent)
-    
-    if host == "" || userAgent == "" {
-        r.Response.WriteJsonExit(g.Map{
-            "code": 400,
-            "msg":  "Host and User-Agent are required",
-        })
-        return
-    }
-    
-    deviceIdentifier := userAgent//fmt.Sprintf("%s:%s", host, userAgent)
 
+	if host == "" || userAgent == "" {
+		r.Response.WriteJsonExit(g.Map{
+			"code": 400,
+			"msg":  "Host and User-Agent are required",
+		})
+		return
+	}
+
+	deviceIdentifier := userAgent //fmt.Sprintf("%s:%s", host, userAgent)
 
 	if deviceIdentifier == "" {
-        r.Response.Status = 400
-        r.Response.WriteJson(g.Map{
-            "error": g.Map{
-                "message": "Device identifier is required" + "\n" + "设备标识符是必需的",
-            },
-        })
-        return
-    }
+		r.Response.Status = 400
+		r.Response.WriteJson(g.Map{
+			"error": g.Map{
+				"message": "Device identifier is required" + "\n" + "设备标识符是必需的",
+			},
+		})
+		return
+	}
 
-    // Check device authorization
-    allowed, err := checkAndAddDevice(token, deviceIdentifier, userAgent, host)	
-    if err != nil {
-        g.Log().Error(ctx, "Device check failed", err)
-        r.Response.Status = 500
-        r.Response.WriteJson(g.Map{
-            "error": g.Map{
-                "message": "Failed to verify device" + "\n" + "无法验证设备",
-            },
-        })
-        return
-    }
+	// Check device authorization
+	allowed, err := checkAndAddDevice(token, deviceIdentifier, userAgent, host)
+	if err != nil {
+		g.Log().Error(ctx, "Device check failed", err)
+		r.Response.Status = 500
+		r.Response.WriteJson(g.Map{
+			"error": g.Map{
+				"message": "Failed to verify device" + "\n" + "无法验证设备",
+			},
+		})
+		return
+	}
 
-    if !allowed {
-        r.Response.Status = 403
-        r.Response.WriteJson(g.Map{
-            "error": g.Map{
-                "message": "Maximum number of devices ("+strconv.Itoa(config.MAX_DEVICES) +") reached. Please logout from another device first." + "\n" + "已达到最大设备数 ("+strconv.Itoa(config.MAX_DEVICES) +")。请先从另一台设备注销。",
-            },
-        })
-        return
-    }
+	if !allowed {
+		r.Response.Status = 403
+		r.Response.WriteJson(g.Map{
+			"error": g.Map{
+				"message": "Maximum number of devices (" + strconv.Itoa(config.MAX_DEVICES) + ") reached. Please logout from another device first." + "\n" + "已达到最大设备数 (" + strconv.Itoa(config.MAX_DEVICES) + ")。请先从另一台设备注销。",
+			},
+		})
+		return
+	}
 
 	g.Log().Debug(ctx, "token", token)
 	// 获取gfsessionid 可以用来分析用户是否多设备登录
 
-	
 	gfsessionid := r.Cookie.Get("gfsessionid").String()
 	g.Log().Debug(ctx, "gfsessionid", gfsessionid)
 	// 获取referer 可以用来判断用户请求来源
@@ -143,33 +142,94 @@ func AuditLimit(r *ghttp.Request) {
 
 	// 判断模型是否为plus模型 如果是则使用plus模型的限制
 	if gstr.HasPrefix(model, "claude") {
-		limiter := GetVisitor(token, config.LIMIT, config.PER)
-		// 获取剩余次数
-		remain := limiter.TokensAt(time.Now())
-		g.Log().Debug(ctx, "remain", remain)
-		if remain < 1 {
-			r.Response.Status = 429
-			// resMsg := gjson.New(MsgPlus429)
-			// 根据remain计算需要等待的时间
-			// 生产间隔
-			creatInterval := config.PER / time.Duration(config.LIMIT)
-			// 转换为秒
-			creatIntervalSec := float64(creatInterval.Seconds())
-			// 等待时间
-			wait := (1 - remain) * creatIntervalSec
-			g.Log().Debug(ctx, "wait", wait, "creatIntervalSec", creatIntervalSec)
+		// 在if gstr.HasPrefix(model, "claude")内部替换原有代码
+		stats, err := getTokenUsage(token)
+		if err != nil {
+			g.Log().Error(ctx, "Failed to get token usage", err)
+			r.Response.Status = 500
 			r.Response.WriteJson(g.Map{
 				"error": g.Map{
-					"message": "You have triggered the usage frequency limit, the current limit is " + gconv.String(config.LIMIT) + " times/" + gconv.String(config.PER) + ", please wait " + gconv.String(int(wait)) + " seconds before trying again.\n" + "您已经触发使用频率限制,当前限制为 " + gconv.String(config.LIMIT) + " 次/" + gconv.String(config.PER) + ",请等待 " + gconv.String(int(wait)) + " 秒后再试.",
+					"message": "Failed to check usage limits",
+				},
+			})
+			return
+		}
+
+		// 获取3小时内的使用次数
+		used3h := stats.Last3Hours
+		// 计算剩余次数
+		remain := int64(config.LIMIT) - used3h
+
+		g.Log().Debug(ctx, "3h usage", used3h)
+		g.Log().Debug(ctx, "remain", remain)
+
+		if remain <= 0 {
+			r.Response.Status = 429
+
+			// 获取最早的记录时间来计算等待时间
+			now := time.Now().Unix()
+			key := getRedisKey(token, PERIOD_3HOURS)
+			// 获取集合中分数最小的成员
+			oldest, err := rdb.ZRange(ctx, key, 0, 0).Result()
+			if err != nil || len(oldest) == 0 {
+				g.Log().Error(ctx, "Failed to get oldest record", err)
+				// 默认等待时间
+				oldest = []string{strconv.FormatInt(now-10800, 10)} // 3小时前
+			}
+
+			oldestTime, _ := strconv.ParseInt(oldest[0], 10, 64)
+			// 计算最早记录过期还需要多少秒
+			wait := (oldestTime + 10800) - now // 10800 = 3*3600秒
+
+			g.Log().Debug(ctx, "wait seconds", wait)
+
+			r.Response.WriteJson(g.Map{
+				"error": g.Map{
+					"message": "You have triggered the usage frequency limit, the current limit is " +
+						gconv.String(config.LIMIT) + " times/3h, please wait " +
+						gconv.String(wait) + " seconds before trying again.\n" +
+						"您已经触发使用频率限制,当前限制为 " + gconv.String(config.LIMIT) +
+						" 次/3小时,请等待 " + gconv.String(wait) + " 秒后再试.",
 				},
 			})
 			return
 		} else {
-			// 消耗一个令牌
-			limiter.Allow()
+			// 记录本次使用
+			err := incrementTokenUsage(token)
+			if err != nil {
+				g.Log().Error(ctx, "Failed to increment usage", err)
+			}
 			r.Response.Status = 200
 			return
 		}
+
+		// limiter := GetVisitor(token, config.LIMIT, config.PER)
+		// // 获取剩余次数
+		// remain := limiter.TokensAt(time.Now())
+		// g.Log().Debug(ctx, "remain", remain)
+		// if remain < 1 {
+		// 	r.Response.Status = 429
+		// 	// resMsg := gjson.New(MsgPlus429)
+		// 	// 根据remain计算需要等待的时间
+		// 	// 生产间隔
+		// 	creatInterval := config.PER / time.Duration(config.LIMIT)
+		// 	// 转换为秒
+		// 	creatIntervalSec := float64(creatInterval.Seconds())
+		// 	// 等待时间
+		// 	wait := (1 - remain) * creatIntervalSec
+		// 	g.Log().Debug(ctx, "wait", wait, "creatIntervalSec", creatIntervalSec)
+		// 	r.Response.WriteJson(g.Map{
+		// 		"error": g.Map{
+		// 			"message": "You have triggered the usage frequency limit, the current limit is " + gconv.String(config.LIMIT) + " times/" + gconv.String(config.PER) + ", please wait " + gconv.String(int(wait)) + " seconds before trying again.\n" + "您已经触发使用频率限制,当前限制为 " + gconv.String(config.LIMIT) + " 次/" + gconv.String(config.PER) + ",请等待 " + gconv.String(int(wait)) + " 秒后再试.",
+		// 		},
+		// 	})
+		// 	return
+		// } else {
+		// 	// 消耗一个令牌
+		// 	limiter.Allow()
+		// 	r.Response.Status = 200
+		// 	return
+		// }
 
 	}
 
