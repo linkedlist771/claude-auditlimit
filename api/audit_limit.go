@@ -166,20 +166,21 @@ func AuditLimit(r *ghttp.Request) {
 		if remain <= 0 {
 			r.Response.Status = 429
 
-			// 获取最早的记录时间来计算等待时间
-			now := time.Now().Unix()
+			// Get TTL of the 3-hour window key
 			key := getRedisKey(token, PERIOD_3HOURS)
-			// 获取集合中分数最小的成员
-			oldest, err := rdb.ZRange(ctx, key, 0, 0).Result()
-			if err != nil || len(oldest) == 0 {
-				g.Log().Error(ctx, "Failed to get oldest record", err)
-				// 默认等待时间
-				oldest = []string{strconv.FormatInt(now-10800, 10)} // 3小时前
+			ttl, err := rdb.TTL(ctx, key).Result()
+			if err != nil {
+				g.Log().Error(ctx, "Failed to get TTL", err)
+				// Default to maximum wait time if error
+				ttl = 3 * time.Hour
 			}
 
-			oldestTime, _ := strconv.ParseInt(oldest[0], 10, 64)
-			// 计算最早记录过期还需要多少秒
-			wait := (oldestTime + 10800) - now // 10800 = 3*3600秒
+			// Convert TTL to seconds
+			wait := int64(ttl.Seconds())
+			if wait < 0 {
+				// If key doesn't exist or has no TTL, set to 0
+				wait = 0
+			}
 
 			g.Log().Debug(ctx, "wait seconds", wait)
 
@@ -203,8 +204,8 @@ func AuditLimit(r *ghttp.Request) {
 			return
 		}
 
-		// limiter := GetVisitor(token, config.LIMIT, config.PER)
-		// // 获取剩余次数
+		_ = GetVisitor(token, config.LIMIT, config.PER)
+		// 获取剩余次数
 		// remain := limiter.TokensAt(time.Now())
 		// g.Log().Debug(ctx, "remain", remain)
 		// if remain < 1 {
