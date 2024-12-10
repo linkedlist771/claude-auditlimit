@@ -7,7 +7,7 @@ import (
 	"strings"
 	"strconv"
 	"time"
-	"fmt"
+	// "fmt"
 	"github.com/gogf/gf/v2/encoding/gjson"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -26,11 +26,13 @@ func AuditLimit(r *ghttp.Request) {
 	// Add device identifier check
 
 	// host := r.Header.Get("Host")
-	host := r.Host
-
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host  // 如果没有X-Forwarded-Host，则使用直接的Host
+	}
 	userAgent := r.Header.Get("User-Agent")
-	// g.Log().Debug(ctx, "host", host)
-	// g.Log().Debug(ctx, "userAgent", userAgent)
+	g.Log().Debug(ctx, "AuditLimit host", host)
+	g.Log().Debug(ctx, "AuditLimit userAgent", userAgent)
     
     if host == "" || userAgent == "" {
         r.Response.WriteJsonExit(g.Map{
@@ -40,7 +42,7 @@ func AuditLimit(r *ghttp.Request) {
         return
     }
     
-    deviceIdentifier := fmt.Sprintf("%s:%s", userAgent, host)
+    deviceIdentifier := userAgent//fmt.Sprintf("%s:%s", host, userAgent)
 
 
 	if deviceIdentifier == "" {

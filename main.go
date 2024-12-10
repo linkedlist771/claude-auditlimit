@@ -18,6 +18,7 @@ func main() {
 	s.BindHandler("/token_stats", api.GetTokenStats)  // 添加新的路由
 	s.BindHandler("/logout", api.DeviceLogout)     // 设备登出
 	s.BindHandler("/devices", api.GetDeviceList)    // 添加获取设备列表路由
+	s.BindHandler("/all_token_devices", api.GetAllTokenDevices)
 
 	s.Run()
 }

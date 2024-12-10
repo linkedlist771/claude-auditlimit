@@ -4,4 +4,4 @@ MAX_DEVICES: 3
 PER: "1h"
 OAIKEY: ""
 MODERATION: "https://api.openai.com/v1/moderations"
-REDIS: "redis:6379"
+REDIS: "redis:6379" #

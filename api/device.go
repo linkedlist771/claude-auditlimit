@@ -4,6 +4,7 @@ import (
     "crypto/sha256"
     "encoding/hex"
     "fmt"
+    "sort"
     "time"
     "github.com/gogf/gf/v2/frame/g"
     "github.com/gogf/gf/v2/net/ghttp"
@@ -34,13 +35,23 @@ func getDeviceKey(token string) string {
     return fmt.Sprintf("devices:%s", token)
 }
 
-// checkAndAddDevice checks if device can be added and adds it if possible
 // 修改函数签名，添加所需参数
 func checkAndAddDevice(token string, deviceIdentifier string, userAgent string, host string) (bool, error) {
     deviceHash := generateDeviceHash(deviceIdentifier)
     key := getDeviceKey(token)
 
     exists, err := rdb.SIsMember(ctx, key, deviceHash).Result()
+   // Use structured logging with JSON format
+   g.Log().Debug(ctx, "Device check", g.Map{
+    "token": token,
+    "deviceHash": deviceHash,
+    "userAgent": userAgent,
+    "host": host,
+    "key": key,
+    "exists": exists,
+})
+
+
     if err != nil {
         return false, err
     }
@@ -149,7 +160,7 @@ func DeviceLogout(r *ghttp.Request) {
         return
     }
     
-    deviceIdentifier := fmt.Sprintf("%s:%s", userAgent, host)
+    deviceIdentifier := userAgent //fmt.Sprintf("%s:%s", userAgent, host)
 
     if deviceIdentifier == "" {
         r.Response.WriteJsonExit(g.Map{
@@ -191,7 +202,6 @@ func DeviceLogout(r *ghttp.Request) {
     })
 }
 
-// 需要在checkAndAddDevice中添加存储设备信息的代码
 func storeDeviceInfo(token, deviceHash string, info *DeviceInfo) error {
     deviceInfoKey := fmt.Sprintf("device_info:%s:%s", token, deviceHash)
     
@@ -205,4 +215,80 @@ func storeDeviceInfo(token, deviceHash string, info *DeviceInfo) error {
     }
     
     return rdb.Expire(ctx, deviceInfoKey, DEVICE_EXPIRE).Err()
+}
+
+
+
+// TokenDeviceStats represents statistics about a token's devices
+type TokenDeviceStats struct {
+    Token    string        `json:"token"`
+    Devices  []*DeviceInfo `json:"devices"`
+    Total    int          `json:"total"`
+}
+
+// GetAllTokenDevices returns device information for all tokens
+func GetAllTokenDevices(r *ghttp.Request) {
+    // Get all keys matching the pattern "devices:*"
+    keys, err := rdb.Keys(ctx, "devices:*").Result()
+    if err != nil {
+        r.Response.WriteJsonExit(g.Map{
+            "code": 500,
+            "msg":  "Failed to get token keys",
+            "error": err.Error(),
+        })
+        return
+    }
+
+    // Create stats for each token
+    allStats := make([]TokenDeviceStats, 0)
+    
+    for _, key := range keys {
+        // Extract token from key (remove "devices:" prefix)
+        token := key[8:] // len("devices:") = 8
+        
+        // Get device hashes for this token
+        deviceHashes, err := rdb.SMembers(ctx, key).Result()
+        if err != nil {
+            continue
+        }
+
+        // Get device info for each hash
+        deviceList := make([]*DeviceInfo, 0)
+        for _, hash := range deviceHashes {
+            deviceInfoKey := fmt.Sprintf("device_info:%s:%s", token, hash)
+            userAgent, err := rdb.HGet(ctx, deviceInfoKey, "user_agent").Result()
+            if err != nil {
+                continue
+            }
+            host, err := rdb.HGet(ctx, deviceInfoKey, "host").Result()
+            if err != nil {
+                continue
+            }
+            
+            deviceList = append(deviceList, &DeviceInfo{
+                UserAgent: userAgent,
+                Host:      host,
+            })
+        }
+
+        // Add stats for this token
+        stats := TokenDeviceStats{
+            Token:   token,
+            Devices: deviceList,
+            Total:   len(deviceList),
+        }
+        
+        allStats = append(allStats, stats)
+    }
+
+    // Sort by total number of devices (optional)
+    sort.Slice(allStats, func(i, j int) bool {
+        return allStats[i].Total > allStats[j].Total
+    })
+
+    r.Response.WriteJsonExit(g.Map{
+        "code": 0,
+        "msg":  "Success",
+        "data": allStats,
+    })
 }
